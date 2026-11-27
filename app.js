@@ -122,6 +122,7 @@
     const ap = f.appProperties || {};
     return { id: f.id, name: stripExt(f.name), file: f.name, size: f.size ? Number(f.size) : null,
       duration: ap.duration ? Number(ap.duration) : null, profile: ap.profile || null, mime: f.mimeType,
+      hash: ap.hash || null, originalSize: ap.originalSize ? Number(ap.originalSize) : null,
       link: f.webViewLink || `https://drive.google.com/file/d/${f.id}/view` };
   }
 
@@ -726,22 +727,68 @@
       suggestTitle();
     }
     renderUpList(); syncGo();
+    checkDuplicates();
     await Promise.all(up.files.filter((f) => f.duration == null).map(async (f) => { f.duration = await probeDuration(f.file); }));
     renderUpList(); renderProfiles();
   });
 
+  // ---------- Ficheiros repetidos ----------
+  // "Impressão digital" do ficheiro original: SHA-256 do tamanho + primeiro e último MB.
+  // Fica guardada no Drive (appProperties.hash) para avisar se o mesmo ficheiro for carregado outra vez.
+  async function fingerprint(file) {
+    try {
+      if (!(window.crypto && crypto.subtle)) return null;
+      const MB = 1 << 20;
+      const parts = [new TextEncoder().encode(String(file.size)), await file.slice(0, MB).arrayBuffer()];
+      if (file.size > MB) parts.push(await file.slice(Math.max(MB, file.size - MB)).arrayBuffer());
+      const buf = await crypto.subtle.digest('SHA-256', await new Blob(parts).arrayBuffer());
+      return [...new Uint8Array(buf)].slice(0, 16).map((b) => b.toString(16).padStart(2, '0')).join('');
+    } catch (e) { return null; }
+  }
+  function findDuplicate(f) {
+    for (const r of S.rehearsals) for (const t of r.tracks) {
+      if (f.hash && t.hash === f.hash) return { r, t, sure: true };
+    }
+    // Gravações antigas (sem impressão digital): só dá para comparar pelo tamanho do ficheiro original.
+    for (const r of S.rehearsals) for (const t of r.tracks) {
+      if (!t.hash && t.originalSize && t.originalSize === f.file.size) return { r, t, sure: false };
+    }
+    const twin = up.files.find((x) => x !== f && x.hash && x.hash === f.hash && up.files.indexOf(x) < up.files.indexOf(f));
+    if (twin) return { twin };
+    return null;
+  }
+  function dupText(f) {
+    const d = f.dup;
+    if (d.twin) return 'Este ficheiro já está escolhido acima.';
+    const where = `no ensaio de ${parseLocalDate(d.r.date).toLocaleDateString('pt-PT')}${d.r.loose ? '' : ` (${d.r.title})`} como «${d.t.name}»`;
+    return d.sure ? `Já foi carregado ${where}.` : `Parece já ter sido carregado ${where}.`;
+  }
+  async function checkDuplicates() {
+    for (const f of up.files) {
+      if (f.hash === undefined) f.hash = await fingerprint(f.file);
+      if (f.dupChecked || f.state !== 'ready') continue;
+      f.dupChecked = true;
+      f.dup = findDuplicate(f);
+      f.skip = !!f.dup;
+    }
+    renderUpList(); syncGo();
+  }
+
   function renderUpList() {
     $('#up-list').innerHTML = up.files.map((f) => `
-      <li class="up-item" data-id="${f.id}">
+      <li class="up-item${f.skip ? ' skipped' : ''}" data-id="${f.id}">
         <input class="song" type="text" data-song="${f.id}" value="${esc(f.song)}" placeholder="Nome da música" aria-label="Nome da música" maxlength="120" autocomplete="off"${f.state === 'ready' || f.state === 'error' ? '' : ' disabled'}>
         <span class="name">${esc(f.file.name)}</span>
         <span class="size num">${f.result ? `${fmtSize(f.file.size)} → <strong>${fmtSize(f.result.size)}</strong>` : `${fmtSize(f.file.size)}${f.duration ? ' · ' + fmtDur(f.duration) : ''}`}</span>
         ${f.state !== 'ready' ? `<div class="bar"><i style="width:${Math.round((f.pct || 0) * 100)}%"></i></div>` : ''}
         ${f.status ? `<span class="status ${f.state === 'done' ? 'ok' : f.state === 'error' ? 'err' : ''}">${esc(f.status)}</span>` : ''}
+        ${f.dup && f.state === 'ready' ? `<div class="dup"><span>${esc(dupText(f))}${f.skip ? ' Não vai ser enviado.' : ''}</span><button class="btn" data-dup="${f.id}">${f.skip ? 'Enviar na mesma' : 'Não enviar'}</button></div>` : ''}
         ${DEMO && f.state === 'done' && f.track ? `<button class="btn listen" data-listen="${f.id}">Ouvir resultado</button>` : ''}
       </li>`).join('');
   }
   $('#up-list').addEventListener('click', (e) => {
+    const d = e.target.closest('[data-dup]');
+    if (d) { const f = up.files.find((x) => x.id === d.dataset.dup); if (f) { f.skip = !f.skip; renderUpList(); syncGo(); } return; }
     const b = e.target.closest('[data-listen]'); if (!b) return;
     const f = up.files.find((x) => x.id === b.dataset.listen);
     if (f && f.track) { dlg.close(); play(f.reh.id, f.track.id); }
@@ -763,7 +810,7 @@
 
   function syncGo() {
     const go = $('#up-go');
-    const pending = up.files.filter((f) => f.state === 'ready' || f.state === 'error');
+    const pending = up.files.filter((f) => (f.state === 'ready' || f.state === 'error') && !f.skip);
     go.disabled = up.busy || !pending.length || (!DEMO && !hasToken());
     go.textContent = up.busy ? 'A trabalhar…' : selectedProfile() === 'original' ? 'Enviar' : (DEMO ? 'Comprimir' : 'Comprimir e enviar');
   }
@@ -822,7 +869,7 @@
     try { wakeLock = navigator.wakeLock && await navigator.wakeLock.request('screen'); } catch (e) { /* opcional */ }
     let parentId = null, reh = null;
     let ok = 0;
-    for (const f of up.files.filter((x) => x.state === 'ready' || x.state === 'error')) {
+    for (const f of up.files.filter((x) => (x.state === 'ready' || x.state === 'error') && !x.skip)) {
       try {
         const song = (f.song || '').replace(/[\/\\]/g, '-').replace(/\s+/g, ' ').trim() || stripExt(f.file.name);
         const ext0 = (f.file.name.match(/\.[a-z0-9]{2,5}$/i) || [''])[0];
@@ -836,13 +883,13 @@
         f.result = blob;
         if (DEMO) {
           reh = reh || findOrMakeDemoReh(date, title);
-          const t = { id: 'up' + f.id, name: stripExt(name), duration, size: blob.size, profile: used, blobUrl: URL.createObjectURL(blob), saved: used === 'original' && key !== 'original' ? 'já era leve' : '' };
+          const t = { id: 'up' + f.id, name: stripExt(name), duration, size: blob.size, profile: used, blobUrl: URL.createObjectURL(blob), hash: f.hash || null, originalSize: f.file.size, saved: used === 'original' && key !== 'original' ? 'já era leve' : '' };
           reh.tracks.push(t); f.track = t; f.reh = reh;
         } else {
           parentId = parentId || await ensureRehearsalFolder(date, title);
           setItem(f, { state: 'work', status: 'A enviar para o Drive…' });
           const base = key === 'original' ? 0 : 0.5;
-          await uploadToDrive(blob, name, parentId, { duration: String(Math.round(duration || 0)), profile: used, originalSize: String(f.file.size) },
+          await uploadToDrive(blob, name, parentId, { duration: String(Math.round(duration || 0)), profile: used, originalSize: String(f.file.size), ...(f.hash ? { hash: f.hash } : {}) },
             (p) => setItem(f, { pct: base + p * (1 - base), status: `A enviar… ${Math.round(p * 100)}%` }));
         }
         ok++;
