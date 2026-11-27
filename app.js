@@ -155,6 +155,10 @@
     return gisPromise;
   }
   const hasToken = () => accessToken && Date.now() < tokenExp - 60000;
+  // A sessão (válida ~1 hora) fica guardada neste aparelho para sobreviver a um recarregar da app.
+  function saveSession() { store.set('session', accessToken ? JSON.stringify({ t: accessToken, exp: tokenExp }) : null); }
+  function clearSession() { accessToken = null; tokenExp = 0; saveSession(); }
+  try { const ss = JSON.parse(store.get('session') || 'null'); if (ss && ss.exp > Date.now() + 60000) { accessToken = ss.t; tokenExp = ss.exp; } } catch (e) { /* ignora */ }
   // Tem de ser chamado diretamente num clique (senão o browser bloqueia a janela de login).
   function signIn() {
     return new Promise((res, rej) => {
@@ -165,7 +169,7 @@
         scope: 'https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/userinfo.email',
         callback: async (r) => {
           if (r.error) return rej(new Error('Login cancelado ou recusado.'));
-          accessToken = r.access_token; tokenExp = Date.now() + Number(r.expires_in || 3600) * 1000;
+          accessToken = r.access_token; tokenExp = Date.now() + Number(r.expires_in || 3600) * 1000; saveSession();
           try {
             const me = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', { headers: { Authorization: 'Bearer ' + accessToken } }).then((x) => x.json());
             userEmail = me.email || ''; store.set('email', userEmail);
@@ -297,7 +301,7 @@
       S.rehearsals.sort((a, b) => b.date.localeCompare(a.date) || a.title.localeCompare(b.title));
       if (!S.open.size && S.rehearsals[0]) S.open.add(S.rehearsals[0].id);
     } catch (e) {
-      if (e.status === 401) { accessToken = null; S.needLogin = true; S.rehearsals = []; }
+      if (e.status === 401) { clearSession(); S.needLogin = true; S.rehearsals = []; }
       else showError(e.message);
     }
     S.loading = false; render();
@@ -382,7 +386,7 @@
     let src;
     try { src = t.blobUrl || (t.demo ? await demoLoop() : await fetchAudio(t)); }
     catch (e) {
-      if (e.status === 401) { accessToken = null; S.needLogin = true; load(); }
+      if (e.status === 401) { clearSession(); S.needLogin = true; load(); }
       toast(e.message); return;
     }
     if (!S.current || S.current.track !== t) return; // entretanto escolheu outra gravação
