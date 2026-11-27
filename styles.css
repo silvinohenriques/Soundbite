@@ -183,3 +183,11 @@ code { font-size: .9em; background: var(--surface-2); padding: 1px 5px; border-r
 .band-btn > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
 .band-btn svg { width: 16px; height: 16px; flex: none; color: var(--muted); }
 .band-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.tabs { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; padding: 4px; border-radius: 12px; background: var(--surface-2); }
+.tabs[hidden] { display: none; }
+.tabs button { min-height: 40px; border: 0; border-radius: 9px; background: transparent; color: var(--muted); font: 600 .95rem/1 var(--f-body); }
+.tabs button[aria-selected="true"] { background: var(--surface); color: var(--ink); box-shadow: 0 1px 3px rgba(0,0,0,.12); }
+.note { width: 52px; height: 52px; flex: none; display: grid; place-items: center; border-radius: 10px; background: var(--surface-2); color: var(--muted); }
+.note svg { width: 24px; height: 24px; }
+.song.open .note { background: var(--accent); color: var(--on-accent); }

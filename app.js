@@ -70,7 +70,7 @@
 
   // ---------- Estado ----------
   // needLogin: falta entrar com Google; noFolder: ainda não existe a pasta de ensaios.
-  const S = { rehearsals: [], open: new Set(), loading: true, current: null, needLogin: false, noFolder: false };
+  const S = { view: store.get('view') === 'songs' ? 'songs' : 'reh', openSongs: new Set(), rehearsals: [], open: new Set(), loading: true, current: null, needLogin: false, noFolder: false };
 
   // ---------- Google Drive ----------
   async function driveError(res) {
@@ -320,12 +320,66 @@
 
   function showError(msg) { const el = $('#error'); el.textContent = msg; el.hidden = !msg; }
 
+  const shortDate = (iso) => parseLocalDate(iso).toLocaleDateString('pt-PT', { day: 'numeric', month: 'short', year: 'numeric' }).replace(/\./g, '');
+  function trackRow(r, t, song) {
+    const cur = S.current && S.current.track.id;
+    return `<li class="track${cur === t.id ? ' playing' : ''}">
+                <button class="t-play" data-play="${esc(r.id)}|${esc(t.id)}${song ? '|' + esc(song) : ''}" aria-label="${cur === t.id && !audio.paused ? 'Pausa' : 'Tocar'} ${esc(t.name)}"><svg><use href="#i-${cur === t.id && !audio.paused ? 'pause' : 'play'}"/></svg></button>
+                <div class="t-main"><span class="t-name">${song ? esc(`${shortDate(r.date)} · ${r.title}`) : esc(t.name)}</span>
+                  <span class="t-meta">${song ? `<span>${esc(t.name)}</span>` : ''}${t.duration ? `<span class="num">${fmtDur(t.duration)}</span>` : ''}${t.size ? `<span class="num">${fmtSize(t.size)}</span>` : ''}${t.profile && PROFILES[t.profile] ? `<span class="badge ${t.profile}">${esc(PROFILES[t.profile].label)}</span>` : ''}${t.saved ? `<span class="badge">${esc(t.saved)}</span>` : ''}</span></div>
+                <button class="icon-btn t-edit" data-rename="${esc(r.id)}|${esc(t.id)}" title="Mudar o nome" aria-label="Mudar o nome de ${esc(t.name)}"><svg><use href="#i-edit"/></svg></button>
+                ${t.link ? `<a class="icon-btn t-open" href="${esc(t.link)}" target="_blank" rel="noopener" title="Abrir no Google Drive" aria-label="Abrir ${esc(t.name)} no Google Drive"><svg><use href="#i-drive"/></svg></a>` : ''}
+              </li>`;
+  }
+
+  // ---------- Músicas: a mesma música em ensaios diferentes ----------
+  // Junta gravações com o mesmo nome, ignorando maiúsculas, acentos, "(take 2)", "v2", números no fim, etc.
+  function songLabel(name) {
+    return name.replace(/\s*[([][^)\]]*[)\]]\s*/g, ' ')
+      .replace(/[\s\-–—_·,:]*\b(take|tk|versao|versão|v|ver|parte|pt)\s*\.?\s*\d*\s*$/i, '')
+      .replace(/[\s\-–—_·#,:]*\d+\s*$/, '')
+      .replace(/\s+/g, ' ').trim() || name.trim();
+  }
+  function songKey(name) {
+    return songLabel(name).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, ' ').trim();
+  }
+  function songGroups() {
+    const map = new Map();
+    S.rehearsals.forEach((r) => r.tracks.forEach((t) => {
+      const k = songKey(t.name); if (!k) return;
+      if (!map.has(k)) map.set(k, { key: k, items: [] });
+      map.get(k).items.push({ r, t });
+    }));
+    const list = [...map.values()];
+    list.forEach((g) => {
+      g.items.sort((a, b) => b.r.date.localeCompare(a.r.date) || a.t.name.localeCompare(b.t.name, 'pt', { numeric: true }));
+      g.label = songLabel(g.items[0].t.name); // nome da versão mais recente
+    });
+    return list.sort((a, b) => a.label.localeCompare(b.label, 'pt', { sensitivity: 'base', numeric: true }));
+  }
+  function renderSongs(list) {
+    list.innerHTML = `<section class="month">${songGroups().map((g) => {
+      const open = S.openSongs.has(g.key);
+      const n = g.items.length;
+      const rehs = new Set(g.items.map((x) => x.r.id)).size;
+      return `<article class="reh song${open ? ' open' : ''}">
+        <button class="reh-head" data-song-toggle="${esc(g.key)}" aria-expanded="${open}">
+          <span class="note"><svg><use href="#i-note"/></svg></span>
+          <span class="reh-text"><strong>${esc(g.label)}</strong><span class="muted">${n} ${n === 1 ? 'gravação' : 'gravações'}${rehs > 1 ? ` em ${rehs} ensaios` : ''} · última a ${esc(shortDate(g.items[0].r.date))}</span></span>
+          <svg class="chev"><use href="#i-chev"/></svg>
+        </button>
+        ${open ? `<ol class="tracks">${g.items.map(({ r, t }) => trackRow(r, t, g.key)).join('')}</ol>` : ''}
+      </article>`;
+    }).join('')}</section>`;
+  }
+
   function render() {
     $('#band-name').textContent = bandName();
     document.title = bandName() === 'Soundbite' ? 'Soundbite' : bandName() + ' · Soundbite';
     $('#demo-banner').hidden = !DEMO;
     $('#btn-upload').hidden = !DEMO && (S.needLogin || S.noFolder);
     const list = $('#list');
+    $('#tabs').hidden = true;
 
     const total = S.rehearsals.reduce((a, r) => a + r.tracks.length, 0);
     $('#summary').textContent = S.loading ? 'A carregar…' : (!DEMO && S.needLogin) ? 'Sem sessão iniciada' : `${S.rehearsals.length} ${S.rehearsals.length === 1 ? 'ensaio' : 'ensaios'} · ${total} ${total === 1 ? 'gravação' : 'gravações'}`;
@@ -344,6 +398,10 @@
       return;
     }
 
+    $('#tabs').hidden = false;
+    document.querySelectorAll('#tabs [data-view]').forEach((b) => b.setAttribute('aria-selected', String(b.dataset.view === S.view)));
+    if (S.view === 'songs') { renderSongs(list); return; }
+
     const months = [];
     S.rehearsals.forEach((r) => {
       const key = r.date.slice(0, 7);
@@ -351,7 +409,6 @@
       if (!m || m.key !== key) months.push(m = { key, items: [] });
       m.items.push(r);
     });
-    const cur = S.current && S.current.track.id;
     list.innerHTML = months.map((m) => `
       <section class="month">
         <h2>${esc(cap(dfMonth.format(parseLocalDate(m.key + '-01'))))}</h2>
@@ -367,14 +424,7 @@
               <span class="reh-text"><strong>${esc(r.title)}</strong><span class="muted">${esc(cap(dfLong.format(d)))} · ${meta.join(' · ')}</span></span>
               <svg class="chev"><use href="#i-chev"/></svg>
             </button>
-            ${open ? `<ol class="tracks">${r.tracks.map((t) => `
-              <li class="track${cur === t.id ? ' playing' : ''}">
-                <button class="t-play" data-play="${esc(r.id)}|${esc(t.id)}" aria-label="${cur === t.id && !audio.paused ? 'Pausa' : 'Tocar'} ${esc(t.name)}"><svg><use href="#i-${cur === t.id && !audio.paused ? 'pause' : 'play'}"/></svg></button>
-                <div class="t-main"><span class="t-name">${esc(t.name)}</span>
-                  <span class="t-meta">${t.duration ? `<span class="num">${fmtDur(t.duration)}</span>` : ''}${t.size ? `<span class="num">${fmtSize(t.size)}</span>` : ''}${t.profile && PROFILES[t.profile] ? `<span class="badge ${t.profile}">${esc(PROFILES[t.profile].label)}</span>` : ''}${t.saved ? `<span class="badge">${esc(t.saved)}</span>` : ''}</span></div>
-                <button class="icon-btn t-edit" data-rename="${esc(r.id)}|${esc(t.id)}" title="Mudar o nome" aria-label="Mudar o nome de ${esc(t.name)}"><svg><use href="#i-edit"/></svg></button>
-                ${t.link ? `<a class="icon-btn t-open" href="${esc(t.link)}" target="_blank" rel="noopener" title="Abrir no Google Drive" aria-label="Abrir ${esc(t.name)} no Google Drive"><svg><use href="#i-drive"/></svg></a>` : ''}
-              </li>`).join('')}</ol>` : ''}
+            ${open ? `<ol class="tracks">${r.tracks.map((t) => trackRow(r, t)).join('')}</ol>` : ''}
           </article>`;
         }).join('')}
       </section>`).join('');
@@ -384,11 +434,11 @@
   const audio = new Audio();
   audio.preload = 'metadata';
 
-  async function play(rehId, trackId) {
+  async function play(rehId, trackId, queue) {
     const r = S.rehearsals.find((x) => x.id === rehId); if (!r) return;
     const t = r.tracks.find((x) => x.id === trackId); if (!t) return;
     if (S.current && S.current.track.id === t.id) { audio.paused ? audio.play() : audio.pause(); return; }
-    S.current = { reh: r, track: t };
+    S.current = { reh: r, track: t, queue: queue || null };
     const sub = `${r.title} · ${parseLocalDate(r.date).toLocaleDateString('pt-PT')}`;
     audio.pause(); audio.removeAttribute('src');
     $('#player').hidden = false;
@@ -439,7 +489,12 @@
 
   function step(dir) {
     if (!S.current) return;
-    const { reh, track } = S.current;
+    const { reh, track, queue } = S.current;
+    if (queue) { // a ouvir a partir de "Músicas": anterior/seguinte = outras versões da mesma música
+      const i = queue.findIndex((x) => x.t === track) + dir;
+      if (i >= 0 && i < queue.length) play(queue[i].r.id, queue[i].t.id, queue);
+      return;
+    }
     const i = reh.tracks.indexOf(track) + dir;
     if (i >= 0 && i < reh.tracks.length) play(reh.id, reh.tracks[i].id);
   }
@@ -465,6 +520,8 @@
   $('#pl-prev').addEventListener('click', () => step(-1));
 
   $('#list').addEventListener('click', (e) => {
+    const st = e.target.closest('[data-song-toggle]');
+    if (st) { const k = st.dataset.songToggle; S.openSongs.has(k) ? S.openSongs.delete(k) : S.openSongs.add(k); render(); return; }
     const tg = e.target.closest('[data-toggle]');
     if (tg) { const id = tg.dataset.toggle; S.open.has(id) ? S.open.delete(id) : S.open.add(id); render(); return; }
     const ac = e.target.closest('[data-action]');
@@ -473,12 +530,20 @@
     const rn = e.target.closest('[data-rename]');
     if (rn) { const [r, t] = rn.dataset.rename.split('|'); openRename(r, t); return; }
     const pl = e.target.closest('[data-play]');
-    if (pl) { const [r, t] = pl.dataset.play.split('|'); play(r, t); }
+    if (pl) {
+      const [r, t, k] = pl.dataset.play.split('|');
+      const g = k && songGroups().find((x) => x.key === k);
+      play(r, t, g ? g.items : null);
+    }
   });
 
   let toastTimer = null;
   function toast(msg) { const t = $('#toast'); t.textContent = msg; t.hidden = false; clearTimeout(toastTimer); toastTimer = setTimeout(() => { t.hidden = true; }, 3500); }
 
+  $('#tabs').addEventListener('click', (e) => {
+    const b = e.target.closest('[data-view]'); if (!b) return;
+    S.view = b.dataset.view; store.set('view', S.view); render(); window.scrollTo(0, 0);
+  });
   $('#btn-refresh').addEventListener('click', () => load());
 
   // ---------- Mudar o nome de uma gravação ----------
