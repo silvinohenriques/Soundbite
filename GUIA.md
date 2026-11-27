@@ -27,12 +27,9 @@ Ao carregar, a app sugere uma data e tu podes mudá-la:
 
 ## Passos para pôr a app a funcionar (cerca de 20 minutos, uma vez só)
 
-### 1. Alojar a app num endereço da internet
+### 1. Alojamento (já feito)
 
-A app é só um conjunto de ficheiros. A forma mais simples é o **Netlify Drop** (gratuito):
-1. Descompacta o `soundbite-app.zip` numa pasta do computador.
-2. Vai a <https://app.netlify.com/drop>, cria uma conta e arrasta essa pasta para a página.
-3. Ficas com um endereço do tipo `https://nome-qualquer.netlify.app`. Podes mudar o nome nas definições do site.
+A app está publicada no GitHub Pages em <https://silvinohenriques.github.io/Soundbite/>, a partir do repositório <https://github.com/silvinohenriques/soundbite>. Cada atualização do código no ramo `main` fica online em um ou dois minutos.
 
 ### 2. Criar o login Google na Google Cloud
 
@@ -45,7 +42,7 @@ A app é só um conjunto de ficheiros. A forma mais simples é o **Netlify Drop*
    - Deixa a app em modo **Teste**. Como só tu a usas, não é preciso pedir verificação à Google. Ao entrar vais ver um aviso "a Google não verificou esta app": carrega em **Continuar**.
 4. Em **APIs e serviços > Credenciais > Criar credenciais > ID de cliente OAuth**:
    - Tipo: **Aplicação Web**.
-   - Em **Origens JavaScript autorizadas** põe o endereço do passo 1 (ex. `https://nome-qualquer.netlify.app`).
+   - Em **Origens JavaScript autorizadas** põe `https://silvinohenriques.github.io` (sem `/Soundbite` no fim).
    - Copia o **ID de cliente** (termina em `.apps.googleusercontent.com`).
 
 Já não é precisa nenhuma chave de API nem partilhar a pasta.
@@ -59,11 +56,11 @@ bandName: "Nome da banda",
 googleClientId: "o ID de cliente OAuth"
 ```
 
-Volta a arrastar a pasta para o Netlify (em **Deploys**).
+Ou, mais simples, envia o ID de cliente ao Claude, que o põe na app e publica.
 
 ### 4. Primeira utilização
 
-1. Abre o endereço da app no telemóvel e carrega em **Entrar com Google**.
+1. Abre https://silvinohenriques.github.io/Soundbite/ no telemóvel e carrega em **Entrar com Google**.
 2. Carrega em **Criar a pasta**.
 3. Carrega em **Carregar** para enviar as primeiras gravações.
 
