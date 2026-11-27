@@ -88,14 +88,14 @@
 
     <label class="drop" for="up-files">
       <svg><use href="#i-up"/></svg>
-      <span><strong>Escolher ficheiros de áudio</strong><br><span class="muted">m4a, mp3, wav, aac, flac… podes escolher vários</span></span>
+      <span><strong>Escolher ficheiros de áudio</strong><br><span class="muted">Podes escolher várias músicas do mesmo ensaio de uma vez</span></span>
     </label>
     <input id="up-files" type="file" multiple accept="audio/*,.m4a,.mp3,.wav,.aac,.flac,.ogg,.opus,.aif,.aiff,.caf,.webm">
     <ul id="up-list" class="up-list"></ul>
 
     <div class="fields">
       <label class="field"><span>Data do ensaio</span><input id="up-date" type="date" required></label>
-      <label class="field"><span>Nome</span><input id="up-title" type="text" list="up-titles" placeholder="Ensaio" maxlength="60"></label>
+      <label class="field"><span>Nome do ensaio</span><input id="up-title" type="text" list="up-titles" placeholder="Ensaio" maxlength="60"></label>
       <datalist id="up-titles"><option value="Ensaio"><option value="Estúdio"><option value="Concerto"><option value="Ideias"></datalist>
     </div>
 
@@ -128,11 +128,12 @@
 <dialog id="rename" class="sheet" aria-labelledby="rn-h">
   <form id="rn-form" method="dialog">
     <div class="sheet-head">
-      <h2 id="rn-h">Mudar o nome</h2>
+      <h2 id="rn-h">Editar gravação</h2>
       <button id="rn-close" type="button" class="icon-btn" aria-label="Fechar">✕</button>
     </div>
     <div class="sheet-body">
       <label class="field"><span>Nome da gravação</span><input id="rn-name" type="text" maxlength="120" required autocomplete="off" enterkeyhint="done"></label>
+      <label class="field"><span>Ensaio</span><select id="rn-reh"></select></label>
       <div id="rn-status" class="muted"></div>
     </div>
     <div class="sheet-foot">
