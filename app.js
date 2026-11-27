@@ -697,7 +697,10 @@
 
   // ---------- Arranque ----------
   if ('serviceWorker' in navigator && !window.SOUNDBITE_FORCE_DEMO && (location.protocol === 'https:' || location.hostname === 'localhost')) {
-    navigator.serviceWorker.register('sw.js').catch(() => {});
+    navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' }).then((reg) => reg.update()).catch(() => {});
+    // Quando uma versão nova da app fica ativa, recarrega uma vez para a usar.
+    let reloaded = false;
+    navigator.serviceWorker.addEventListener('controllerchange', () => { if (!reloaded) { reloaded = true; location.reload(); } });
   }
   if (!DEMO) loadGis().catch(() => {}); // prepara o botão "Entrar com Google"
   load();
