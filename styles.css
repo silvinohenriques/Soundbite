@@ -191,3 +191,7 @@ code { font-size: .9em; background: var(--surface-2); padding: 1px 5px; border-r
 .note { width: 52px; height: 52px; flex: none; display: grid; place-items: center; border-radius: 10px; background: var(--surface-2); color: var(--muted); }
 .note svg { width: 24px; height: 24px; }
 .song.open .note { background: var(--accent); color: var(--on-accent); }
+
+.up-item .dup { grid-column: 1 / -1; display: flex; align-items: center; gap: 10px; justify-content: space-between; padding: 8px 10px; border-radius: 8px; background: var(--accent-soft); color: var(--ink); font-size: .82rem; }
+.up-item .dup .btn { flex: none; font-size: .8rem; min-height: 32px; padding: 0 10px; }
+.up-item.skipped .song, .up-item.skipped .name, .up-item.skipped .size { opacity: .55; }
