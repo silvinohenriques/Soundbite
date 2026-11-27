@@ -192,6 +192,12 @@
     return res.json();
   }
 
+  async function driveRename(id, name) {
+    const res = await fetch(`${API}/files/${encodeURIComponent(id)}?fields=id,name`, { method: 'PATCH',
+      headers: { Authorization: 'Bearer ' + await token(), 'Content-Type': 'application/json' }, body: JSON.stringify({ name }) });
+    if (!res.ok) throw await driveError(res);
+    return res.json();
+  }
   async function createRootFolder() {
     const f = await drivePost('/files?fields=id', { name: 'Soundbite – Ensaios', mimeType: FOLDER,
       appProperties: { soundbite: 'root' }, description: 'Gravações de ensaio (criado pela app Soundbite).' });
@@ -361,6 +367,7 @@
                 <button class="t-play" data-play="${esc(r.id)}|${esc(t.id)}" aria-label="${cur === t.id && !audio.paused ? 'Pausa' : 'Tocar'} ${esc(t.name)}"><svg><use href="#i-${cur === t.id && !audio.paused ? 'pause' : 'play'}"/></svg></button>
                 <div class="t-main"><span class="t-name">${esc(t.name)}</span>
                   <span class="t-meta">${t.duration ? `<span class="num">${fmtDur(t.duration)}</span>` : ''}${t.size ? `<span class="num">${fmtSize(t.size)}</span>` : ''}${t.profile && PROFILES[t.profile] ? `<span class="badge ${t.profile}">${esc(PROFILES[t.profile].label)}</span>` : ''}${t.saved ? `<span class="badge">${esc(t.saved)}</span>` : ''}</span></div>
+                <button class="icon-btn t-edit" data-rename="${esc(r.id)}|${esc(t.id)}" title="Mudar o nome" aria-label="Mudar o nome de ${esc(t.name)}"><svg><use href="#i-edit"/></svg></button>
                 ${t.link ? `<a class="icon-btn t-open" href="${esc(t.link)}" target="_blank" rel="noopener" title="Abrir no Google Drive" aria-label="Abrir ${esc(t.name)} no Google Drive"><svg><use href="#i-drive"/></svg></a>` : ''}
               </li>`).join('')}</ol>` : ''}
           </article>`;
@@ -458,6 +465,8 @@
     const ac = e.target.closest('[data-action]');
     if (ac && ac.dataset.action === 'login') { signIn().then(() => load()).catch((err) => toast(err.message)); return; }
     if (ac && ac.dataset.action === 'create') { openSetup(); return; }
+    const rn = e.target.closest('[data-rename]');
+    if (rn) { const [r, t] = rn.dataset.rename.split('|'); openRename(r, t); return; }
     const pl = e.target.closest('[data-play]');
     if (pl) { const [r, t] = pl.dataset.play.split('|'); play(r, t); }
   });
@@ -466,6 +475,47 @@
   function toast(msg) { const t = $('#toast'); t.textContent = msg; t.hidden = false; clearTimeout(toastTimer); toastTimer = setTimeout(() => { t.hidden = true; }, 3500); }
 
   $('#btn-refresh').addEventListener('click', () => load());
+
+  // ---------- Mudar o nome de uma gravação ----------
+  // Muda o nome do ficheiro no Google Drive, mantendo a extensão (.mp3, .m4a…).
+  const rnDlg = $('#rename');
+  let renaming = null;
+  function openRename(rehId, trackId) {
+    const r = S.rehearsals.find((x) => x.id === rehId); if (!r) return;
+    const t = r.tracks.find((x) => x.id === trackId); if (!t) return;
+    renaming = t;
+    $('#rn-name').value = t.name;
+    $('#rn-status').textContent = '';
+    $('#rn-go').disabled = false;
+    rnDlg.showModal();
+    setTimeout(() => { const i = $('#rn-name'); i.focus(); i.select(); }, 50);
+  }
+  $('#rn-close').addEventListener('click', () => rnDlg.close());
+  $('#rn-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const t = renaming; if (!t) return;
+    const name = $('#rn-name').value.replace(/[\/\\]/g, '-').replace(/\s+/g, ' ').trim();
+    if (!name) { $('#rn-status').textContent = 'Escreve um nome.'; return; }
+    if (name === t.name) { rnDlg.close(); return; }
+    const ext = ((t.file || '').match(/\.[a-z0-9]{2,5}$/i) || [''])[0];
+    $('#rn-go').disabled = true;
+    $('#rn-status').textContent = 'A guardar…';
+    try {
+      if (!DEMO && !t.demo) await driveRename(t.id, name + ext);
+      t.name = name; t.file = name + ext;
+      if (S.current && S.current.track === t) {
+        $('#pl-title').textContent = name;
+        if ('mediaSession' in navigator && navigator.mediaSession.metadata) navigator.mediaSession.metadata.title = name;
+      }
+      rnDlg.close();
+      render();
+      toast('Nome mudado.');
+    } catch (err) {
+      if (err.status === 401) { clearSession(); }
+      $('#rn-status').textContent = err.message;
+      $('#rn-go').disabled = false;
+    }
+  });
 
   // ---------- Carregar (upload) ----------
   const up = { files: [], busy: false };
