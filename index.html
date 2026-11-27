@@ -42,7 +42,7 @@
     <div class="brand">
       <img class="logo" src="icons/icon.svg" alt="" width="36" height="36">
       <div>
-        <h1 id="band-name">Soundbite</h1>
+        <h1><button id="band-btn" class="band-btn" title="Mudar o nome da banda"><span id="band-name">Soundbite</span><svg aria-hidden="true"><use href="#i-edit"/></svg></button></h1>
         <p id="summary" class="muted">A carregar…</p>
       </div>
     </div>
@@ -138,6 +138,22 @@
     </div>
     <div class="sheet-foot">
       <button id="rn-go" type="submit" class="btn primary wide">Guardar</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="band" class="sheet" aria-labelledby="band-h">
+  <form id="band-form" method="dialog">
+    <div class="sheet-head">
+      <h2 id="band-h">Nome da banda</h2>
+      <button id="band-close" type="button" class="icon-btn" aria-label="Fechar">✕</button>
+    </div>
+    <div class="sheet-body">
+      <label class="field"><span>Nome que aparece no topo da app</span><input id="band-input" type="text" maxlength="60" required autocomplete="off" enterkeyhint="done"></label>
+      <div id="band-status" class="muted"></div>
+    </div>
+    <div class="sheet-foot">
+      <button id="band-go" type="submit" class="btn primary wide">Guardar</button>
     </div>
   </form>
 </dialog>
