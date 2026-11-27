@@ -7,7 +7,8 @@
 <meta name="claude:viewport-fit-sides" content="cover">
 <meta name="theme-color" content="#F2F3F6">
 <link rel="manifest" href="manifest.webmanifest">
-<link rel="icon" href="icons/icon-192.png">
+<link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+<link rel="icon" href="icons/icon-192.png" sizes="192x192">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="Soundbite">
@@ -17,6 +18,12 @@
 <link rel="stylesheet" href="styles.css">
 </head>
 <body>
+<!-- Ecrã de carregamento: o ícone ao centro e o nome em baixo; a pinta do i entra a saltar pelas letras. -->
+<div id="splash" class="splash" aria-hidden="true">
+  <img class="sp-icon" src="icons/icon.svg" alt="" width="84" height="84">
+  <span class="sp-wm"><span class="l">s</span><span class="l">o</span><span class="l">u</span><span class="l">n</span><span class="l">d</span><span class="l">b</span><span class="l li">ı</span><span class="l">t</span><span class="l">e</span><span class="dot"></span></span>
+</div>
+<script src="splash.js"></script>
 <svg width="0" height="0" style="position:absolute" aria-hidden="true">
   <symbol id="i-play" viewBox="0 0 24 24"><path d="M8 5.5v13a1 1 0 0 0 1.5.86l10.5-6.5a1 1 0 0 0 0-1.72L9.5 4.64A1 1 0 0 0 8 5.5Z" fill="currentColor"/></symbol>
   <symbol id="i-pause" viewBox="0 0 24 24"><rect x="6" y="5" width="4" height="14" rx="1" fill="currentColor"/><rect x="14" y="5" width="4" height="14" rx="1" fill="currentColor"/></symbol>
@@ -33,7 +40,7 @@
 <header class="top">
   <div class="top-inner">
     <div class="brand">
-      <span class="logo" aria-hidden="true"><i></i><i></i><i></i><i></i></span>
+      <img class="logo" src="icons/icon.svg" alt="" width="36" height="36">
       <div>
         <h1 id="band-name">Soundbite</h1>
         <p id="summary" class="muted">A carregar…</p>
