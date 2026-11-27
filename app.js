@@ -14,6 +14,8 @@
 
   const DEMO = !!window.SOUNDBITE_FORCE_DEMO || params.has('demo') || !CFG.googleClientId;
   let folderId = store.get('folderId') || '';
+  // Nome da banda: guardado na pasta principal do Drive (appProperties) e em cache no telemóvel.
+  const bandName = () => store.get('bandName') || CFG.bandName || 'Soundbite';
 
   const API = 'https://www.googleapis.com/drive/v3';
   const UPLOAD = 'https://www.googleapis.com/upload/drive/v3/files';
@@ -86,12 +88,14 @@
   }
 
   // Procura a pasta da app no Drive (útil se a app foi aberta noutro browser ou se os dados do browser foram apagados).
+  function rootProps(f) { const n = f.appProperties && f.appProperties.bandName; if (n) store.set('bandName', n); }
   async function findRootFolder() {
     if (folderId) {
-      try { const f = await driveGet('/files/' + folderId, { fields: 'id,trashed' }); if (!f.trashed) return folderId; } catch (e) { if (e.status === 401) throw e; }
+      try { const f = await driveGet('/files/' + folderId, { fields: 'id,trashed,appProperties' }); if (!f.trashed) { rootProps(f); return folderId; } } catch (e) { if (e.status === 401) throw e; }
     }
-    const r = await driveGet('/files', { q: `mimeType = '${FOLDER}' and appProperties has { key='soundbite' and value='root' } and trashed = false`, fields: 'files(id)', pageSize: '1' });
+    const r = await driveGet('/files', { q: `mimeType = '${FOLDER}' and appProperties has { key='soundbite' and value='root' } and trashed = false`, fields: 'files(id,appProperties)', pageSize: '1' });
     folderId = r.files[0] ? r.files[0].id : '';
+    if (r.files[0]) rootProps(r.files[0]);
     store.set('folderId', folderId || null);
     return folderId;
   }
@@ -317,8 +321,8 @@
   function showError(msg) { const el = $('#error'); el.textContent = msg; el.hidden = !msg; }
 
   function render() {
-    $('#band-name').textContent = CFG.bandName || 'Soundbite';
-    document.title = (CFG.bandName ? CFG.bandName + ' · ' : '') + 'Soundbite';
+    $('#band-name').textContent = bandName();
+    document.title = bandName() === 'Soundbite' ? 'Soundbite' : bandName() + ' · Soundbite';
     $('#demo-banner').hidden = !DEMO;
     $('#btn-upload').hidden = !DEMO && (S.needLogin || S.noFolder);
     const list = $('#list');
@@ -402,7 +406,7 @@
     audio.src = src;
     audio.play().catch(() => toast('Toca no botão de play para ouvir.'));
     if ('mediaSession' in navigator) {
-      navigator.mediaSession.metadata = new MediaMetadata({ title: t.name, artist: CFG.bandName || 'Soundbite', album: `${r.title} · ${r.date}` });
+      navigator.mediaSession.metadata = new MediaMetadata({ title: t.name, artist: bandName(), album: `${r.title} · ${r.date}` });
       navigator.mediaSession.setActionHandler('nexttrack', () => step(1));
       navigator.mediaSession.setActionHandler('previoustrack', () => step(-1));
     }
@@ -534,6 +538,35 @@
       if (err.status === 401) { clearSession(); }
       $('#rn-status').textContent = err.message;
       $('#rn-go').disabled = false;
+    }
+  });
+
+  // ---------- Nome da banda ----------
+  const bandDlg = $('#band');
+  $('#band-btn').addEventListener('click', () => {
+    $('#band-input').value = bandName();
+    $('#band-status').textContent = '';
+    $('#band-go').disabled = false;
+    bandDlg.showModal();
+  });
+  $('#band-close').addEventListener('click', () => bandDlg.close());
+  $('#band-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const name = $('#band-input').value.replace(/\s+/g, ' ').trim();
+    if (!name) { $('#band-status').textContent = 'Escreve um nome.'; return; }
+    if (name === bandName()) { bandDlg.close(); return; }
+    $('#band-go').disabled = true;
+    $('#band-status').textContent = 'A guardar…';
+    try {
+      if (!DEMO && folderId && hasToken()) await driveUpdate(folderId, { appProperties: { bandName: name } });
+      store.set('bandName', name);
+      bandDlg.close();
+      render();
+      toast('Nome da banda mudado.');
+    } catch (err) {
+      if (err.status === 401) clearSession();
+      $('#band-status').textContent = err.message;
+      $('#band-go').disabled = false;
     }
   });
 
