@@ -1,6 +1,6 @@
 // Guarda a "casca" da app para abrir depressa e funcionar como app instalada.
 // As gravações não ficam em cache: vêm sempre do Google Drive.
-const CACHE = 'soundbite-v1';
+const CACHE = 'soundbite-v2';
 const SHELL = ['./', 'index.html', 'styles.css', 'app.js', 'config.js', 'encoder-worker.js',
   'vendor/lame.min.js', 'manifest.webmanifest', 'icons/icon-192.png', 'icons/icon-512.png'];
 

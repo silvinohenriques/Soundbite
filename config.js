@@ -5,5 +5,5 @@ window.SOUNDBITE_CONFIG = {
   bandName: "A nossa banda",
 
   // ID de cliente OAuth (tipo "Aplicação Web") criado na Google Cloud.
-  googleClientId: ""
+  googleClientId: "1049895800962-d4mhu4te1j9ft0g2g3s6rntpgbs6oa6l.apps.googleusercontent.com"
 };
