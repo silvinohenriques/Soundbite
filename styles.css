@@ -102,7 +102,8 @@ code { font-size: .9em; background: var(--surface-2); padding: 1px 5px; border-r
 .t-meta { display: flex; flex-wrap: wrap; gap: 4px 10px; font-size: .8rem; color: var(--muted); }
 .badge { font-size: .7rem; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; padding: 1px 7px; border-radius: 99px; background: var(--surface-2); color: var(--muted); }
 .badge.estudio { background: var(--accent-soft); color: var(--accent); }
-.t-open { color: var(--muted); }
+.t-open, .t-edit { color: var(--muted); }
+.t-edit { margin-right: -6px; }
 .empty { text-align: center; padding: 48px 12px; color: var(--muted); }
 .empty h2 { font: 600 1.2rem/1.3 var(--f-display); color: var(--ink); margin: 0 0 6px; text-wrap: balance; }
 .skeleton { height: 76px; border-radius: 14px; background: linear-gradient(90deg, var(--surface) 0%, var(--surface-2) 50%, var(--surface) 100%); background-size: 200% 100%; animation: shimmer 1.4s infinite linear; border: 1px solid var(--line); }

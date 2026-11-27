@@ -26,6 +26,7 @@
   <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M20 11a8 8 0 1 0-2.3 5.7M20 5v6h-6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
   <symbol id="i-link" viewBox="0 0 24 24"><path d="M10 14a4 4 0 0 0 5.66 0l3-3a4 4 0 0 0-5.66-5.66l-1 1M14 10a4 4 0 0 0-5.66 0l-3 3a4 4 0 0 0 5.66 5.66l1-1" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></symbol>
   <symbol id="i-chev" viewBox="0 0 24 24"><path d="m9 6 6 6-6 6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+  <symbol id="i-edit" viewBox="0 0 24 24"><path d="M4 20h4L19 9a2.83 2.83 0 0 0-4-4L4 16v4Zm9.5-13.5 4 4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></symbol>
   <symbol id="i-drive" viewBox="0 0 24 24"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9l-6-6Zm0 0v6h6M12 18v-6m0 6-2.5-2.5M12 18l2.5-2.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></symbol>
 </svg>
 
@@ -115,6 +116,22 @@
   <div class="sheet-foot">
     <button id="setup-go" class="btn primary wide">Criar a pasta</button>
   </div>
+</dialog>
+
+<dialog id="rename" class="sheet" aria-labelledby="rn-h">
+  <form id="rn-form" method="dialog">
+    <div class="sheet-head">
+      <h2 id="rn-h">Mudar o nome</h2>
+      <button id="rn-close" type="button" class="icon-btn" aria-label="Fechar">✕</button>
+    </div>
+    <div class="sheet-body">
+      <label class="field"><span>Nome da gravação</span><input id="rn-name" type="text" maxlength="120" required autocomplete="off" enterkeyhint="done"></label>
+      <div id="rn-status" class="muted"></div>
+    </div>
+    <div class="sheet-foot">
+      <button id="rn-go" type="submit" class="btn primary wide">Guardar</button>
+    </div>
+  </form>
 </dialog>
 
 <div id="toast" class="toast" role="status" hidden></div>
