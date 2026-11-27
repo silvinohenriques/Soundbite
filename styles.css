@@ -58,9 +58,7 @@ code { font-size: .9em; background: var(--surface-2); padding: 1px 5px; border-r
 .brand > div { min-width: 0; }
 .brand h1 { margin: 0; font: 800 1.35rem/1.1 var(--f-display); letter-spacing: -.01em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .brand p { margin: 2px 0 0; font-size: .82rem; }
-.logo { width: 36px; height: 36px; border-radius: 10px; background: var(--ink); display: flex; align-items: flex-end; justify-content: center; gap: 3px; padding: 8px 7px; flex: none; }
-.logo i { display: block; width: 4px; border-radius: 2px; background: var(--accent); }
-.logo i:nth-child(1) { height: 40%; } .logo i:nth-child(2) { height: 85%; } .logo i:nth-child(3) { height: 60%; } .logo i:nth-child(4) { height: 100%; }
+.logo { width: 36px; height: 36px; border-radius: 10px; flex: none; display: block; }
 .actions { display: flex; align-items: center; gap: 6px; flex: none; }
 
 .icon-btn { width: 40px; height: 40px; display: inline-grid; place-items: center; border: 0; border-radius: 10px; background: transparent; color: var(--ink); }
@@ -166,3 +164,12 @@ code { font-size: .9em; background: var(--surface-2); padding: 1px 5px; border-r
 .toast { position: fixed; left: 50%; bottom: calc(100px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); background: var(--ink); color: var(--bg); padding: 10px 16px; border-radius: 10px; font-size: .9rem; z-index: 20; max-width: calc(100% - 32px); }
 
 @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
+
+/* Ecrã de carregamento (cores fixas do ícone, iguais no tema claro e escuro) */
+.splash { position: fixed; inset: 0; z-index: 100; background: #171A21; transition: opacity .45s ease; }
+.splash.out { opacity: 0; pointer-events: none; }
+.splash .sp-icon { position: absolute; left: 50%; top: 44%; width: 84px; height: 84px; border-radius: 22.5%; transform: translate(-50%, -50%); }
+.splash .sp-wm { position: absolute; left: 50%; bottom: calc(11% + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); font: 800 1.6rem/1 var(--f-display); letter-spacing: -.03em; color: #F0A53A; white-space: nowrap; display: inline-block; opacity: 0; transition: opacity .3s ease; }
+.splash .sp-wm.ready { opacity: 1; }
+.splash .sp-wm .l { display: inline-block; }
+.splash .dot { position: absolute; left: 0; top: 0; width: .25em; height: .25em; border-radius: 50%; background: #E5484D; transform-origin: 50% 100%; opacity: 0; }
