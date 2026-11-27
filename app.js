@@ -192,9 +192,10 @@
     return res.json();
   }
 
-  async function driveRename(id, name) {
-    const res = await fetch(`${API}/files/${encodeURIComponent(id)}?fields=id,name`, { method: 'PATCH',
-      headers: { Authorization: 'Bearer ' + await token(), 'Content-Type': 'application/json' }, body: JSON.stringify({ name }) });
+  async function driveUpdate(id, body, query) {
+    const q = new URLSearchParams(Object.assign({ fields: 'id,name,parents' }, query || {}));
+    const res = await fetch(`${API}/files/${encodeURIComponent(id)}?${q}`, { method: 'PATCH',
+      headers: { Authorization: 'Bearer ' + await token(), 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
     if (!res.ok) throw await driveError(res);
     return res.json();
   }
@@ -477,39 +478,58 @@
   $('#btn-refresh').addEventListener('click', () => load());
 
   // ---------- Mudar o nome de uma gravação ----------
-  // Muda o nome do ficheiro no Google Drive, mantendo a extensão (.mp3, .m4a…).
+  // Muda o nome do ficheiro no Google Drive (mantendo a extensão) e/ou passa-o para outro ensaio.
   const rnDlg = $('#rename');
   let renaming = null;
+  const rehLabel = (r) => `${parseLocalDate(r.date).toLocaleDateString('pt-PT')} · ${r.title}`;
   function openRename(rehId, trackId) {
     const r = S.rehearsals.find((x) => x.id === rehId); if (!r) return;
     const t = r.tracks.find((x) => x.id === trackId); if (!t) return;
-    renaming = t;
+    renaming = { t, r };
     $('#rn-name').value = t.name;
+    const opts = S.rehearsals.filter((x) => !x.loose || x === r);
+    $('#rn-reh').innerHTML = opts.map((x) => `<option value="${esc(x.id)}"${x === r ? ' selected' : ''}>${esc(rehLabel(x))}</option>`).join('');
     $('#rn-status').textContent = '';
     $('#rn-go').disabled = false;
     rnDlg.showModal();
-    setTimeout(() => { const i = $('#rn-name'); i.focus(); i.select(); }, 50);
   }
   $('#rn-close').addEventListener('click', () => rnDlg.close());
   $('#rn-form').addEventListener('submit', async (e) => {
     e.preventDefault();
-    const t = renaming; if (!t) return;
+    if (!renaming) return;
+    const { t, r } = renaming;
     const name = $('#rn-name').value.replace(/[\/\\]/g, '-').replace(/\s+/g, ' ').trim();
     if (!name) { $('#rn-status').textContent = 'Escreve um nome.'; return; }
-    if (name === t.name) { rnDlg.close(); return; }
+    const dest = S.rehearsals.find((x) => x.id === $('#rn-reh').value) || r;
+    const renamed = name !== t.name, moved = dest !== r;
+    if (!renamed && !moved) { rnDlg.close(); return; }
     const ext = ((t.file || '').match(/\.[a-z0-9]{2,5}$/i) || [''])[0];
     $('#rn-go').disabled = true;
     $('#rn-status').textContent = 'A guardar…';
     try {
-      if (!DEMO && !t.demo) await driveRename(t.id, name + ext);
+      if (!DEMO && !t.demo) {
+        const body = renamed ? { name: name + ext } : {};
+        const query = moved ? { addParents: dest.id, removeParents: r.loose ? folderId : r.id } : {};
+        await driveUpdate(t.id, body, query);
+        // Se o ensaio antigo ficou vazio, a pasta vai para o lixo do Drive (pode ser recuperada de lá).
+        if (moved && !r.loose && r.tracks.length === 1) await driveUpdate(r.id, { trashed: true }).catch(() => {});
+      }
       t.name = name; t.file = name + ext;
+      if (moved) {
+        r.tracks.splice(r.tracks.indexOf(t), 1);
+        dest.tracks.push(t);
+        dest.tracks.sort((a, b) => a.name.localeCompare(b.name, 'pt', { numeric: true }));
+        if (!r.tracks.length) S.rehearsals.splice(S.rehearsals.indexOf(r), 1);
+        S.open.add(dest.id);
+        if (S.current && S.current.track === t) S.current.reh = dest;
+      }
       if (S.current && S.current.track === t) {
         $('#pl-title').textContent = name;
         if ('mediaSession' in navigator && navigator.mediaSession.metadata) navigator.mediaSession.metadata.title = name;
       }
       rnDlg.close();
       render();
-      toast('Nome mudado.');
+      toast(moved ? `Passou para ${rehLabel(dest)}.` : 'Nome mudado.');
     } catch (err) {
       if (err.status === 401) { clearSession(); }
       $('#rn-status').textContent = err.message;
@@ -525,6 +545,7 @@
     if (!DEMO && !folderId) { openSetup(); return; }
     if (!DEMO) loadGis().catch(() => {});
     if (!$('#up-date').value) $('#up-date').value = todayISO();
+    suggestTitle();
     renderAccount(); renderProfiles(); renderUpList(); syncGo();
     dlg.showModal();
   }
@@ -599,11 +620,12 @@
     if (!files.length) return;
     const fresh = !up.files.length || up.files.every((f) => f.state === 'done');
     if (fresh) up.files = [];
-    files.forEach((file) => up.files.push({ file, duration: null, state: 'ready', id: Math.random().toString(36).slice(2) }));
+    files.forEach((file) => up.files.push({ file, song: stripExt(file.name), duration: null, state: 'ready', id: Math.random().toString(36).slice(2) }));
     // Data sugerida: a data no nome do ficheiro, ou a data em que o ficheiro foi gravado/modificado.
     if (fresh) {
       const f0 = files[0];
       $('#up-date').value = dateFromName(f0.name) || todayISO(new Date(f0.lastModified || Date.now()));
+      suggestTitle();
     }
     renderUpList(); syncGo();
     await Promise.all(up.files.filter((f) => f.duration == null).map(async (f) => { f.duration = await probeDuration(f.file); }));
@@ -613,6 +635,7 @@
   function renderUpList() {
     $('#up-list').innerHTML = up.files.map((f) => `
       <li class="up-item" data-id="${f.id}">
+        <input class="song" type="text" data-song="${f.id}" value="${esc(f.song)}" placeholder="Nome da música" aria-label="Nome da música" maxlength="120" autocomplete="off"${f.state === 'ready' || f.state === 'error' ? '' : ' disabled'}>
         <span class="name">${esc(f.file.name)}</span>
         <span class="size num">${f.result ? `${fmtSize(f.file.size)} → <strong>${fmtSize(f.result.size)}</strong>` : `${fmtSize(f.file.size)}${f.duration ? ' · ' + fmtDur(f.duration) : ''}`}</span>
         ${f.state !== 'ready' ? `<div class="bar"><i style="width:${Math.round((f.pct || 0) * 100)}%"></i></div>` : ''}
@@ -625,6 +648,20 @@
     const f = up.files.find((x) => x.id === b.dataset.listen);
     if (f && f.track) { dlg.close(); play(f.reh.id, f.track.id); }
   });
+
+  $('#up-list').addEventListener('input', (e) => {
+    const i = e.target.closest('[data-song]'); if (!i) return;
+    const f = up.files.find((x) => x.id === i.dataset.song); if (f) f.song = i.value;
+  });
+  // Se já há um ensaio nesse dia, sugere o mesmo nome, para as músicas novas irem para lá.
+  let titleTouched = false;
+  function suggestTitle() {
+    if (titleTouched) return;
+    const r = S.rehearsals.find((x) => !x.loose && x.date === $('#up-date').value);
+    $('#up-title').value = r ? r.title : '';
+  }
+  $('#up-date').addEventListener('change', suggestTitle);
+  $('#up-title').addEventListener('input', () => { titleTouched = !!$('#up-title').value; });
 
   function syncGo() {
     const go = $('#up-go');
@@ -689,12 +726,14 @@
     let ok = 0;
     for (const f of up.files.filter((x) => x.state === 'ready' || x.state === 'error')) {
       try {
-        let blob = f.file, name = f.file.name, duration = f.duration, used = 'original';
+        const song = (f.song || '').replace(/[\/\\]/g, '-').replace(/\s+/g, ' ').trim() || stripExt(f.file.name);
+        const ext0 = (f.file.name.match(/\.[a-z0-9]{2,5}$/i) || [''])[0];
+        let blob = f.file, name = song + ext0, duration = f.duration, used = 'original';
         if (key !== 'original') {
           setItem(f, { state: 'work', pct: 0, status: 'A ler o áudio…' });
           const r = await compress(f.file, key, (p) => setItem(f, { pct: p * (DEMO ? 1 : 0.5), status: `A comprimir… ${Math.round(p * 100)}%` }));
           duration = r.duration;
-          if (r.blob.size < f.file.size * 0.95) { blob = r.blob; name = stripExt(f.file.name) + '.mp3'; used = key; }
+          if (r.blob.size < f.file.size * 0.95) { blob = r.blob; name = song + '.mp3'; used = key; }
         }
         f.result = blob;
         if (DEMO) {
@@ -718,6 +757,7 @@
     up.busy = false; syncGo();
     try { wakeLock && wakeLock.release(); } catch (e) { /* ok */ }
     if (ok) {
+      titleTouched = false;
       toast(DEMO ? 'Pronto. Podes ouvir o resultado na lista.' : `${ok} ${ok === 1 ? 'gravação enviada' : 'gravações enviadas'}.`);
       if (DEMO) { S.rehearsals.sort((a, b) => b.date.localeCompare(a.date)); S.open.add(reh.id); render(); }
       else { S.open.clear(); await load(); const r = S.rehearsals.find((x) => x.id === parentId); if (r) { S.open.add(r.id); render(); } }
