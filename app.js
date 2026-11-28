@@ -795,7 +795,6 @@
     $('.top').hidden = true; $('main.wrap').hidden = true; $('#listen').hidden = false;
     const la = new Audio(); la.preload = 'metadata';
     const err = (m) => { $('#ls-error').textContent = m; $('#ls-error').hidden = !m; };
-    $('#ls-drive').href = `https://drive.google.com/file/d/${encodeURIComponent(LISTEN_ID)}/view`;
     let title = 'Gravação partilhada', sub = '', src = null;
     try {
       if (DEMO) { title = 'Cais do Sodré – take 3'; sub = `${bandName()} · Estúdio – pré-produção · ${shortDate(todayISO())}`; src = await demoLoop(); }
@@ -808,8 +807,7 @@
         src = mediaUrl(f.id);
       }
     } catch (e) {
-      if (e.noKey) { $('#ls-drive').classList.add('primary'); $('#ls-drive').textContent = 'Ouvir no Google Drive'; }
-      else err(e.status === 404 || e.status === 403 ? 'Esta gravação já não está partilhada. Pede um link novo a quem to enviou.' : e.message);
+      err(e.noKey ? 'Este link ainda não está pronto.' : e.status === 404 || e.status === 403 ? 'Esta gravação já não está partilhada. Pede um link novo a quem to enviou.' : e.message);
     }
     $('#ls-title').textContent = title;
     $('#ls-sub').textContent = sub; $('#ls-sub').hidden = !sub;
@@ -825,7 +823,7 @@
     la.addEventListener('play', sync); la.addEventListener('pause', sync); la.addEventListener('ended', sync);
     la.addEventListener('waiting', () => $('#ls-play').classList.add('loading'));
     la.addEventListener('playing', () => $('#ls-play').classList.remove('loading'));
-    la.addEventListener('error', () => { $('#ls-play').classList.remove('loading'); if (la.src) err('Não deu para tocar aqui. Experimenta abrir no Google Drive.'); });
+    la.addEventListener('error', () => { $('#ls-play').classList.remove('loading'); if (la.src) err('Não deu para tocar esta gravação. Tenta outra vez daqui a pouco.'); });
     let seeking = false;
     la.addEventListener('timeupdate', () => {
       $('#ls-cur').textContent = fmtDur(la.currentTime) || '0:00';
