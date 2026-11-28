@@ -94,7 +94,7 @@ Há três formas de abrir a app:
 **Quem garante as permissões é o próprio Google Drive**: a app partilha a pasta (ou a gravação) como *qualquer pessoa com o link pode ver*. Com esse papel de leitor o Drive recusa qualquer alteração ou upload, mesmo que alguém tente fora da app.
 
 - **Link da banda:** no topo da app, botão com as duas pessoas > **Criar link da banda** > **Enviar link** (abre a partilha do telemóvel, por exemplo para o grupo do WhatsApp). Quem abrir o link fica com a app em modo "só para ouvir"; pode adicioná-la ao ecrã principal como tu.
-- **Ouve isto:** em cada gravação, botão de partilhar (a seta para cima) > **Enviar link**. O amigo vê o nome da gravação, da banda e do ensaio e um botão de play. Não vê os outros ensaios.
+- **Ouve isto:** em cada gravação, botão de partilhar (a seta para cima) > **Enviar link**. O amigo vê o nome da gravação, da banda e do ensaio e um botão de play (sem link para o Google Drive). Não vê os outros ensaios.
 - **Desligar:** no mesmo sítio há **Desligar o link**. Quem tinha o link deixa de conseguir ouvir. Enquanto o link da banda estiver ligado, todas as gravações continuam acessíveis a quem o tiver.
 - **Quem tem o link consegue ouvir.** Se o link da banda for parar às mãos erradas, desliga-o. Atenção: voltar a ligá-lo dá o mesmo link de antes.
 - Se num telemóvel abriste o link da banda e queres voltar a entrar como dono, abre `…/Soundbite/?dono`.
