@@ -149,8 +149,47 @@
       link: f.webViewLink || `https://drive.google.com/file/d/${f.id}/view` };
   }
 
+  // ---------- Índice para a banda ----------
+  // Sem login, o Drive não deixa listar o conteúdo de uma pasta partilhada só por link. Por isso, enquanto o link
+  // da banda estiver ligado, a app do dono guarda na pasta um ficheiro soundbite-indice.json com a lista de ensaios
+  // e gravações. A banda lê esse ficheiro (um só pedido) e toca cada gravação pelo seu id.
+  let indexId = '';
+  let bandPublic = null; // null = ainda não se sabe
+  function indexData() {
+    return { v: 1, bandName: bandName(), rehearsals: S.rehearsals.map((r) => ({ id: r.id, date: r.date, title: r.title, loose: !!r.loose,
+      tracks: r.tracks.map((t) => ({ id: t.id, name: t.name, file: t.file, size: t.size, duration: t.duration, profile: t.profile, mime: t.mime, link: t.link })) })) };
+  }
+  async function syncIndex(force) {
+    if (DEMO || READONLY || !folderId || !hasToken()) return;
+    try {
+      if (bandPublic === null || force) bandPublic = await isPublic(folderId);
+      if (!bandPublic) return;
+      const body = JSON.stringify(indexData());
+      if (!force && indexId && store.get('indexSent') === body) return;
+      if (!indexId) {
+        const f = await drivePost('/files?fields=id', { name: 'soundbite-indice.json', mimeType: 'application/json', parents: [folderId],
+          appProperties: { soundbite: 'index' }, description: 'Lista de ensaios para o link da banda (criado pela app Soundbite).' });
+        indexId = f.id;
+      }
+      const res = await fetch(`${UPLOAD}/${encodeURIComponent(indexId)}?uploadType=media&fields=id`, { method: 'PATCH',
+        headers: { Authorization: 'Bearer ' + await token(), 'Content-Type': 'application/json' }, body });
+      if (!res.ok) throw await driveError(res);
+      await driveUpdate(folderId, { properties: { index: indexId, bandName: bandName() } });
+      store.set('indexSent', body);
+    } catch (e) { /* tenta outra vez da próxima vez que a lista carregar */ }
+  }
+  async function loadBandIndex(id) {
+    const res = await fetch(`${API}/files/${encodeURIComponent(id)}?alt=media&key=${encodeURIComponent(needKey())}`, { cache: 'no-store' });
+    if (!res.ok) throw await driveError(res);
+    const j = await res.json();
+    if (j.bandName) store.set('bandNamePublic', j.bandName);
+    return (j.rehearsals || []).map((r) => Object.assign({}, r, { tracks: (r.tracks || []).map((t) => Object.assign({}, t)) }));
+  }
+
   async function loadFromDrive() {
     const top = await listChildren([folderId]);
+    const idx = top.find((f) => f.appProperties && f.appProperties.soundbite === 'index');
+    if (idx) indexId = idx.id;
     const folders = top.filter((f) => f.mimeType === FOLDER);
     const loose = top.filter(isAudio);
     const inner = folders.length ? await listChildren(folders.map((f) => f.id)) : [];
@@ -331,7 +370,8 @@
         if (f.trashed) { const e = new Error('gone'); e.status = 404; throw e; }
         const n = (f.properties && f.properties.bandName) || (f.appProperties && f.appProperties.bandName);
         if (n) store.set('bandNamePublic', n);
-        S.rehearsals = await loadFromDrive();
+        const ix = f.properties && f.properties.index;
+        S.rehearsals = ix ? await loadBandIndex(ix) : await loadFromDrive();
       }
       else if (!hasToken()) { S.needLogin = true; S.rehearsals = []; }
       else {
@@ -339,6 +379,7 @@
         await findRootFolder();
         S.noFolder = !folderId;
         S.rehearsals = folderId ? await loadFromDrive() : [];
+        syncIndex();
       }
       S.rehearsals.sort((a, b) => b.date.localeCompare(a.date) || a.title.localeCompare(b.title));
       if (!S.open.size && S.rehearsals[0]) S.open.add(S.rehearsals[0].id);
@@ -650,6 +691,7 @@
       }
       rnDlg.close();
       render();
+      syncIndex();
       toast(moved ? `Passou para ${rehLabel(dest)}.` : 'Nome mudado.');
     } catch (err) {
       if (err.status === 401) { clearSession(); }
@@ -679,6 +721,7 @@
       store.set('bandName', name);
       bandDlg.close();
       render();
+      syncIndex();
       toast('Nome da banda mudado.');
     } catch (err) {
       if (err.status === 401) clearSession();
@@ -743,6 +786,7 @@
       const props = o.kind === 'band' ? { bandName: bandName() } : { band: bandName(), reh: o.reh.title, date: o.reh.date };
       await driveUpdate(o.id, { properties: props }).catch(() => {});
     }
+    if (o.kind === 'band') { bandPublic = true; await syncIndex(true); }
     o.on = true; o.busy = false;
   }
   function shareError(e) {
@@ -770,7 +814,7 @@
   $('#sh-on').addEventListener('click', () => enableShare().then(() => renderShare()).catch(shareError));
   $('#sh-off').addEventListener('click', async () => {
     const o = sharing; o.busy = true; renderShare('A desligar…');
-    try { await setPublic(o.id, false); o.on = false; o.busy = false; renderShare(o.kind === 'band' ? 'Link desligado. Quem o tinha deixou de ver as gravações.' : 'Link desligado.'); }
+    try { await setPublic(o.id, false); if (o.kind === 'band') bandPublic = false; o.on = false; o.busy = false; renderShare(o.kind === 'band' ? 'Link desligado. Quem o tinha deixou de ver as gravações.' : 'Link desligado.'); }
     catch (e) { shareError(e); }
   });
   async function copyLink() {
