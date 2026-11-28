@@ -35,6 +35,8 @@
   <symbol id="i-chev" viewBox="0 0 24 24"><path d="m9 6 6 6-6 6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
   <symbol id="i-note" viewBox="0 0 24 24"><path d="M9 18V5l11-2v13M9 18a3 3 0 1 1-6 0 3 3 0 0 1 6 0Zm11-2a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></symbol>
   <symbol id="i-edit" viewBox="0 0 24 24"><path d="M4 20h4L19 9a2.83 2.83 0 0 0-4-4L4 16v4Zm9.5-13.5 4 4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+  <symbol id="i-share" viewBox="0 0 24 24"><path d="M12 15V3m0 0L7.5 7.5M12 3l4.5 4.5M8 11H6a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-6a2 2 0 0 0-2-2h-2" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+  <symbol id="i-users" viewBox="0 0 24 24"><path d="M16 20v-1.5a3.5 3.5 0 0 0-3.5-3.5h-5A3.5 3.5 0 0 0 4 18.5V20M10 11a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Zm10 9v-1.5a3.5 3.5 0 0 0-2.5-3.35M15 4.15a3.5 3.5 0 0 1 0 6.7" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></symbol>
   <symbol id="i-drive" viewBox="0 0 24 24"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9l-6-6Zm0 0v6h6M12 18v-6m0 6-2.5-2.5M12 18l2.5-2.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></symbol>
 </svg>
 
@@ -49,6 +51,7 @@
     </div>
     <div class="actions">
       <button id="btn-refresh" class="icon-btn" title="Atualizar" aria-label="Atualizar"><svg><use href="#i-refresh"/></svg></button>
+      <button id="btn-share" class="icon-btn" title="Partilhar com a banda" aria-label="Partilhar com a banda" hidden><svg><use href="#i-users"/></svg></button>
       <button id="btn-upload" class="btn primary" hidden><svg><use href="#i-up"/></svg><span>Carregar</span></button>
     </div>
   </div>
@@ -65,6 +68,25 @@
     <button role="tab" data-view="songs" aria-selected="false">Músicas</button>
   </div>
   <div id="list" aria-live="polite"></div>
+</main>
+
+<!-- Página "Ouve isto": uma só gravação, aberta por um amigo a partir de um link. -->
+<main id="listen" class="listen" hidden>
+  <div class="ls-card">
+    <img class="ls-logo" src="icons/icon.svg" alt="" width="56" height="56">
+    <p class="ls-kicker">Ouve isto</p>
+    <h1 id="ls-title">A carregar…</h1>
+    <p id="ls-sub" class="muted" hidden></p>
+    <button id="ls-play" class="play-btn ls-play" aria-label="Tocar" disabled><svg><use href="#i-play"/></svg></button>
+    <div id="ls-seekrow" class="pl-seek ls-seek">
+      <span id="ls-cur" class="num">0:00</span>
+      <input id="ls-seek" type="range" min="0" max="1000" value="0" aria-label="Posição">
+      <span id="ls-dur" class="num">0:00</span>
+    </div>
+    <p id="ls-error" class="ls-error" hidden></p>
+    <a id="ls-drive" class="btn" target="_blank" rel="noopener"><svg><use href="#i-drive"/></svg>Abrir no Google Drive</a>
+  </div>
+  <p class="ls-foot muted">Partilhado com a Soundbite</p>
 </main>
 
 <div id="player" class="player" hidden>
@@ -163,9 +185,29 @@
   </form>
 </dialog>
 
+<dialog id="share" class="sheet" aria-labelledby="sh-h">
+  <div class="sheet-head">
+    <h2 id="sh-h">Partilhar</h2>
+    <button id="sh-close" type="button" class="icon-btn" aria-label="Fechar">✕</button>
+  </div>
+  <div class="sheet-body prose">
+    <div id="sh-intro"></div>
+    <div id="sh-linkrow" class="sh-linkrow" hidden>
+      <input id="sh-link" type="text" readonly aria-label="Link">
+      <button id="sh-copy" type="button" class="btn">Copiar</button>
+    </div>
+    <p id="sh-status" class="muted"></p>
+    <button id="sh-off" type="button" class="btn sh-off" hidden>Desligar</button>
+  </div>
+  <div class="sheet-foot">
+    <button id="sh-on" type="button" class="btn primary wide" hidden>Criar link</button>
+    <button id="sh-send" type="button" class="btn primary wide" hidden><svg><use href="#i-share"/></svg>Enviar link</button>
+  </div>
+</dialog>
+
 <div id="toast" class="toast" role="status" hidden></div>
 
-<script src="config.js?v=3"></script>
-<script src="app.js?v=4"></script>
+<script src="config.js?v=4"></script>
+<script src="app.js?v=5"></script>
 </body>
 </html>
