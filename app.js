@@ -1,5 +1,10 @@
 /* Soundbite: gravações de ensaio guardadas no Google Drive, organizadas por data.
-   - Versão pessoal: só o dono usa a app, com login Google. A pasta fica privada.
+   Três modos:
+   - Dono (endereço normal): entra com Google e pode carregar, mudar nomes e partilhar.
+   - Banda (?banda=<id da pasta>): sem login, só ouve e descarrega. A pasta fica partilhada no Drive
+     como "qualquer pessoa com o link pode ver", por isso o próprio Drive impede edições e uploads.
+   - Ouve isto (?ouvir=<id do ficheiro>): página simples com uma só gravação, para amigos.
+   Os modos sem login leem o Drive com a chave da API (googleApiKey em config.js).
    - Permissão drive.file: a app só vê e mexe no que ela própria criou (a pasta "Soundbite – Ensaios").
    - A compressão é feita no próprio aparelho (MP3 com lamejs), antes de enviar. */
 (() => {
@@ -12,10 +17,21 @@
     set(k, v) { try { v == null ? localStorage.removeItem('sb.' + k) : localStorage.setItem('sb.' + k, v); } catch (e) { /* sem armazenamento */ } }
   };
 
-  const DEMO = !!window.SOUNDBITE_FORCE_DEMO || params.has('demo') || !CFG.googleClientId;
-  let folderId = store.get('folderId') || '';
+  // ?dono volta ao modo do dono num telemóvel onde se abriu um link da banda.
+  if (params.has('dono')) store.set('bandFolder', null);
+  if (params.get('banda')) store.set('bandFolder', params.get('banda'));
+  const LISTEN_ID = params.get('ouvir') || '';
+  const BAND_FOLDER = LISTEN_ID ? '' : (params.get('banda') || store.get('bandFolder') || '');
+  const MODE = LISTEN_ID ? 'listen' : BAND_FOLDER ? 'band' : 'owner';
+  const READONLY = MODE !== 'owner';
+  const DEMO = !!window.SOUNDBITE_FORCE_DEMO || params.has('demo') || (!READONLY && !CFG.googleClientId);
+  let folderId = READONLY ? BAND_FOLDER : (store.get('folderId') || '');
   // Nome da banda: guardado na pasta principal do Drive (appProperties) e em cache no telemóvel.
-  const bandName = () => store.get('bandName') || CFG.bandName || 'Soundbite';
+  const bandName = () => store.get(READONLY ? 'bandNamePublic' : 'bandName') || CFG.bandName || 'Soundbite';
+  // Endereço base da app, para montar os links de partilha.
+  const APP_URL = location.origin + location.pathname.replace(/index\.html$/, '');
+  const bandLink = (id) => `${APP_URL}?banda=${encodeURIComponent(id)}`;
+  const listenLink = (id) => `${APP_URL}?ouvir=${encodeURIComponent(id)}`;
 
   const API = 'https://www.googleapis.com/drive/v3';
   const UPLOAD = 'https://www.googleapis.com/upload/drive/v3/files';
@@ -79,10 +95,17 @@
     const err = new Error(msg); err.status = res.status; return err;
   }
 
+  // Sem login (banda e "ouve isto") o Drive é lido com a chave da API: só funciona para o que está partilhado por link.
+  function needKey() {
+    if (!CFG.googleApiKey) { const e = new Error('Este link ainda não está pronto: falta a chave da API em config.js (ver GUIA.md).'); e.noKey = true; throw e; }
+    return CFG.googleApiKey;
+  }
   async function driveGet(path, query) {
     const u = new URL(API + path);
     Object.entries(query || {}).forEach(([k, v]) => u.searchParams.set(k, v));
-    const res = await fetch(u, { headers: { Authorization: 'Bearer ' + await token() } });
+    const headers = {};
+    if (READONLY) u.searchParams.set('key', needKey()); else headers.Authorization = 'Bearer ' + await token();
+    const res = await fetch(u, { headers });
     if (!res.ok) throw await driveError(res);
     return res.json();
   }
@@ -107,7 +130,7 @@
       let pageToken = '';
       do {
         const q = { q: `(${ids.map((id) => `'${id}' in parents`).join(' or ')}) and trashed = false`,
-          fields: 'nextPageToken, files(id,name,mimeType,size,createdTime,parents,appProperties,webViewLink)',
+          fields: 'nextPageToken, files(id,name,mimeType,size,createdTime,parents,appProperties,properties,webViewLink)',
           pageSize: '1000', orderBy: 'name' };
         if (pageToken) q.pageToken = pageToken;
         const r = await driveGet('/files', q);
@@ -119,7 +142,7 @@
   }
 
   function toTrack(f) {
-    const ap = f.appProperties || {};
+    const ap = Object.assign({}, f.properties, f.appProperties);
     return { id: f.id, name: stripExt(f.name), file: f.name, size: f.size ? Number(f.size) : null,
       duration: ap.duration ? Number(ap.duration) : null, profile: ap.profile || null, mime: f.mimeType,
       hash: ap.hash || null, originalSize: ap.originalSize ? Number(ap.originalSize) : null,
@@ -303,6 +326,13 @@
     showError('');
     try {
       if (DEMO) S.rehearsals = S.rehearsals.length ? S.rehearsals : demoData();
+      else if (READONLY) {
+        const f = await driveGet('/files/' + folderId, { fields: 'id,trashed,properties,appProperties' });
+        if (f.trashed) { const e = new Error('gone'); e.status = 404; throw e; }
+        const n = (f.properties && f.properties.bandName) || (f.appProperties && f.appProperties.bandName);
+        if (n) store.set('bandNamePublic', n);
+        S.rehearsals = await loadFromDrive();
+      }
       else if (!hasToken()) { S.needLogin = true; S.rehearsals = []; }
       else {
         S.needLogin = false;
@@ -313,7 +343,8 @@
       S.rehearsals.sort((a, b) => b.date.localeCompare(a.date) || a.title.localeCompare(b.title));
       if (!S.open.size && S.rehearsals[0]) S.open.add(S.rehearsals[0].id);
     } catch (e) {
-      if (e.status === 401) { clearSession(); S.needLogin = true; S.rehearsals = []; }
+      if (READONLY && (e.status === 404 || e.status === 403) && !e.noKey) showError('Este link da banda já não funciona (a partilha foi desligada ou a pasta mudou). Pede um link novo a quem to enviou.');
+      else if (e.status === 401 && !READONLY) { clearSession(); S.needLogin = true; S.rehearsals = []; }
       else showError(e.message);
     }
     S.loading = false; render();
@@ -328,8 +359,9 @@
                 <button class="t-play" data-play="${esc(r.id)}|${esc(t.id)}${song ? '|' + esc(song) : ''}" aria-label="${cur === t.id && !audio.paused ? 'Pausa' : 'Tocar'} ${esc(t.name)}"><svg><use href="#i-${cur === t.id && !audio.paused ? 'pause' : 'play'}"/></svg></button>
                 <div class="t-main"><span class="t-name">${song ? esc(`${shortDate(r.date)} · ${r.title}`) : esc(t.name)}</span>
                   <span class="t-meta">${song ? `<span>${esc(t.name)}</span>` : ''}${t.duration ? `<span class="num">${fmtDur(t.duration)}</span>` : ''}${t.size ? `<span class="num">${fmtSize(t.size)}</span>` : ''}${t.profile && PROFILES[t.profile] ? `<span class="badge ${t.profile}">${esc(PROFILES[t.profile].label)}</span>` : ''}${t.saved ? `<span class="badge">${esc(t.saved)}</span>` : ''}</span></div>
-                <button class="icon-btn t-edit" data-rename="${esc(r.id)}|${esc(t.id)}" title="Mudar o nome" aria-label="Mudar o nome de ${esc(t.name)}"><svg><use href="#i-edit"/></svg></button>
-                ${t.link ? `<a class="icon-btn t-open" href="${esc(t.link)}" target="_blank" rel="noopener" title="Abrir no Google Drive" aria-label="Abrir ${esc(t.name)} no Google Drive"><svg><use href="#i-drive"/></svg></a>` : ''}
+                ${READONLY ? '' : `<button class="icon-btn t-share" data-share="${esc(r.id)}|${esc(t.id)}" title="Enviar a um amigo (ouve isto)" aria-label="Enviar ${esc(t.name)} a um amigo"><svg><use href="#i-share"/></svg></button>
+                <button class="icon-btn t-edit" data-rename="${esc(r.id)}|${esc(t.id)}" title="Mudar o nome" aria-label="Mudar o nome de ${esc(t.name)}"><svg><use href="#i-edit"/></svg></button>`}
+                ${t.link ? `<a class="icon-btn t-open" href="${esc(t.link)}" target="_blank" rel="noopener" title="${READONLY ? 'Descarregar ou abrir no Google Drive' : 'Abrir no Google Drive'}" aria-label="Abrir ${esc(t.name)} no Google Drive"><svg><use href="#i-drive"/></svg></a>` : ''}
               </li>`;
   }
 
@@ -378,16 +410,19 @@
     $('#band-name').textContent = bandName();
     document.title = bandName() === 'Soundbite' ? 'Soundbite' : bandName() + ' · Soundbite';
     $('#demo-banner').hidden = !DEMO;
-    $('#btn-upload').hidden = !DEMO && (S.needLogin || S.noFolder);
+    $('#btn-upload').hidden = READONLY || (!DEMO && (S.needLogin || S.noFolder));
+    $('#btn-share').hidden = READONLY || (!DEMO && (S.needLogin || S.noFolder));
+    $('#band-btn').disabled = READONLY;
     const list = $('#list');
     $('#tabs').hidden = true;
 
     const total = S.rehearsals.reduce((a, r) => a + r.tracks.length, 0);
-    $('#summary').textContent = S.loading ? 'A carregar…' : (!DEMO && S.needLogin) ? 'Sem sessão iniciada' : `${S.rehearsals.length} ${S.rehearsals.length === 1 ? 'ensaio' : 'ensaios'} · ${total} ${total === 1 ? 'gravação' : 'gravações'}`;
+    $('#summary').textContent = S.loading ? 'A carregar…' : (!DEMO && S.needLogin && !READONLY) ? 'Sem sessão iniciada' : `${S.rehearsals.length} ${S.rehearsals.length === 1 ? 'ensaio' : 'ensaios'} · ${total} ${total === 1 ? 'gravação' : 'gravações'}${READONLY ? ' · só para ouvir' : ''}`;
 
     if (S.loading && !S.rehearsals.length) { list.innerHTML = '<div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div>'; return; }
     if (!DEMO && S.needLogin) {
-      list.innerHTML = `<div class="empty"><h2>Entra com a tua conta Google</h2><p>As gravações estão numa pasta privada do teu Google Drive.</p><p><button class="btn primary" data-action="login">Entrar com Google</button></p></div>`;
+      list.innerHTML = `<div class="empty"><h2>Entra com a tua conta Google</h2><p>As gravações estão numa pasta privada do teu Google Drive.</p><p><button class="btn primary" data-action="login">Entrar com Google</button></p>
+        <form class="join" id="join-form"><p>Fazes parte da banda? Abre o link que te enviaram, ou cola-o aqui:</p><div><input id="join-link" type="url" placeholder="https://…?banda=…" autocomplete="off"><button class="btn" type="submit">Abrir</button></div></form></div>`;
       return;
     }
     if (!DEMO && S.noFolder) {
@@ -395,7 +430,8 @@
       return;
     }
     if (!S.rehearsals.length) {
-      list.innerHTML = `<div class="empty"><h2>Ainda não há gravações</h2><p>Carrega as primeiras com o botão <strong>Carregar</strong>.</p></div>`;
+      list.innerHTML = READONLY ? `<div class="empty"><h2>${$('#error').hidden ? 'Ainda não há gravações' : 'Sem gravações para mostrar'}</h2></div>`
+        : `<div class="empty"><h2>Ainda não há gravações</h2><p>Carrega as primeiras com o botão <strong>Carregar</strong>.</p></div>`;
       return;
     }
 
@@ -447,9 +483,9 @@
     $('#pl-sub').textContent = sub;
     render();
     let src;
-    try { src = t.blobUrl || (t.demo ? await demoLoop() : await fetchAudio(t)); }
+    try { src = t.blobUrl || (t.demo ? await demoLoop() : READONLY ? mediaUrl(t.id) : await fetchAudio(t)); }
     catch (e) {
-      if (e.status === 401) { clearSession(); S.needLogin = true; load(); }
+      if (e.status === 401 && !READONLY) { clearSession(); S.needLogin = true; load(); }
       toast(e.message); return;
     }
     if (!S.current || S.current.track !== t) return; // entretanto escolheu outra gravação
@@ -465,6 +501,8 @@
   }
   // A pasta é privada, por isso a gravação é descarregada com o teu login antes de tocar.
   // As últimas 4 ficam guardadas em memória para não descarregar outra vez.
+  // Sem login, a gravação toca diretamente do Drive (começa logo, sem descarregar tudo primeiro).
+  const mediaUrl = (id) => `${API}/files/${encodeURIComponent(id)}?alt=media&key=${encodeURIComponent(needKey())}`;
   const blobCache = [];
   async function fetchAudio(t) {
     const hit = blobCache.find((x) => x.id === t.id);
@@ -528,6 +566,8 @@
     const ac = e.target.closest('[data-action]');
     if (ac && ac.dataset.action === 'login') { signIn().then(() => load()).catch((err) => toast(err.message)); return; }
     if (ac && ac.dataset.action === 'create') { openSetup(); return; }
+    const sh = e.target.closest('[data-share]');
+    if (sh) { const [r, t] = sh.dataset.share.split('|'); openListenShare(r, t); return; }
     const rn = e.target.closest('[data-rename]');
     if (rn) { const [r, t] = rn.dataset.rename.split('|'); openRename(r, t); return; }
     const pl = e.target.closest('[data-play]');
@@ -536,6 +576,17 @@
       const g = k && songGroups().find((x) => x.key === k);
       play(r, t, g ? g.items : null);
     }
+  });
+
+  $('#list').addEventListener('submit', (e) => {
+    if (e.target.id !== 'join-form') return;
+    e.preventDefault();
+    const v = $('#join-link').value.trim();
+    let id = '';
+    try { id = new URL(v).searchParams.get('banda') || ''; } catch (err) { /* não é um endereço */ }
+    if (!id && /^[\w-]{20,}$/.test(v)) id = v;
+    if (!id) { toast('Esse não parece um link da banda.'); return; }
+    location.href = bandLink(id);
   });
 
   let toastTimer = null;
@@ -624,7 +675,7 @@
     $('#band-go').disabled = true;
     $('#band-status').textContent = 'A guardar…';
     try {
-      if (!DEMO && folderId && hasToken()) await driveUpdate(folderId, { appProperties: { bandName: name } });
+      if (!DEMO && folderId && hasToken()) await driveUpdate(folderId, { appProperties: { bandName: name }, properties: { bandName: name } });
       store.set('bandName', name);
       bandDlg.close();
       render();
@@ -635,6 +686,156 @@
       $('#band-go').disabled = false;
     }
   });
+
+  // ---------- Partilhar ----------
+  // Partilha do Drive "qualquer pessoa com o link" com papel de leitor: quem tem o link ouve e descarrega,
+  // mas o Drive não o deixa mudar nada. Para a banda partilha-se a pasta toda; para um amigo, só uma gravação.
+  const demoShared = new Set();
+  async function isPublic(id) {
+    if (DEMO) return demoShared.has(id);
+    const r = await driveGet(`/files/${encodeURIComponent(id)}/permissions`, { fields: 'permissions(id,type,role)' });
+    return (r.permissions || []).some((p) => p.type === 'anyone');
+  }
+  async function setPublic(id, on) {
+    if (DEMO) { on ? demoShared.add(id) : demoShared.delete(id); return; }
+    const auth = { Authorization: 'Bearer ' + await token() };
+    const u = `${API}/files/${encodeURIComponent(id)}/permissions`;
+    const res = on
+      ? await fetch(u + '?fields=id', { method: 'POST', headers: Object.assign({ 'Content-Type': 'application/json' }, auth),
+        body: JSON.stringify({ role: 'reader', type: 'anyone', allowFileDiscovery: false }) })
+      : await fetch(u + '/anyoneWithLink', { method: 'DELETE', headers: auth });
+    if (!res.ok && !(!on && res.status === 404)) throw await driveError(res);
+  }
+
+  const shDlg = $('#share');
+  let sharing = null;
+  function openBandShare() { openShare({ kind: 'band', id: folderId, name: bandName() }); }
+  function openListenShare(rehId, trackId) {
+    const r = S.rehearsals.find((x) => x.id === rehId); if (!r) return;
+    const t = r.tracks.find((x) => x.id === trackId); if (!t) return;
+    openShare({ kind: 'track', id: t.id, name: t.name, reh: r });
+  }
+  async function openShare(o) {
+    sharing = Object.assign({ on: false, busy: true, bandOn: false }, o);
+    const band = o.kind === 'band';
+    $('#sh-h').textContent = band ? 'Partilhar com a banda' : 'Ouve isto';
+    $('#sh-intro').innerHTML = band
+      ? '<p>Um link para mandares no grupo da banda. Quem o abrir vê todos os ensaios e pode <strong>ouvir e descarregar</strong>, sem conta Google.</p><p>Não consegue mudar nomes, apagar nem carregar nada: o próprio Google Drive não deixa.</p>'
+      : `<p>Um link direto para <strong>${esc(o.name)}</strong>. Abre uma página só com esta gravação e um botão de play, sem login. Não mostra os outros ensaios.</p>`;
+    renderShare('A verificar…');
+    shDlg.showModal();
+    try {
+      if (!DEMO && !hasToken()) { const e = new Error('A sessão Google terminou.'); e.status = 401; throw e; }
+      sharing.on = await isPublic(o.id);
+      if (!band) {
+        sharing.bandOn = !!folderId && await isPublic(folderId).catch(() => false);
+        // Quem abre o link vê o nome da gravação, do ensaio e da banda (guardados como propriedades públicas do ficheiro).
+        if (!sharing.on) await enableShare();
+      }
+      sharing.busy = false; renderShare();
+    } catch (e) { shareError(e); }
+  }
+  async function enableShare() {
+    const o = sharing;
+    o.busy = true; renderShare('A criar o link…');
+    await setPublic(o.id, true);
+    if (!DEMO) {
+      const props = o.kind === 'band' ? { bandName: bandName() } : { band: bandName(), reh: o.reh.title, date: o.reh.date };
+      await driveUpdate(o.id, { properties: props }).catch(() => {});
+    }
+    o.on = true; o.busy = false;
+  }
+  function shareError(e) {
+    if (!sharing) return;
+    sharing.busy = false;
+    if (e.status === 401) { clearSession(); renderShare('A sessão Google terminou. Fecha, entra outra vez e volta a tentar.'); }
+    else renderShare(e.message || String(e));
+  }
+  const shareUrl = () => sharing.kind === 'band' ? bandLink(sharing.id) : listenLink(sharing.id);
+  function renderShare(status) {
+    const o = sharing; if (!o) return;
+    $('#sh-status').textContent = status || (o.on
+      ? (o.kind === 'band' ? 'O link da banda está ligado.' : (o.bandOn ? 'Link pronto. (Como o link da banda está ligado, quem tem esse link também ouve esta gravação.)' : 'Link pronto.'))
+      : (o.kind === 'band' ? 'A pasta ainda é privada: só tu a vês.' : 'Este link está desligado.'));
+    $('#sh-link').value = o.on ? shareUrl() : '';
+    $('#sh-linkrow').hidden = !o.on;
+    $('#sh-on').hidden = o.on;
+    $('#sh-on').textContent = o.kind === 'band' ? 'Criar link da banda' : 'Ligar o link outra vez';
+    $('#sh-send').hidden = !o.on;
+    $('#sh-off').hidden = !o.on;
+    $('#sh-off').textContent = o.kind === 'band' ? 'Desligar o link da banda' : 'Desligar este link';
+    ['#sh-on', '#sh-send', '#sh-off', '#sh-copy'].forEach((s) => { $(s).disabled = o.busy; });
+  }
+  $('#sh-close').addEventListener('click', () => shDlg.close());
+  $('#sh-on').addEventListener('click', () => enableShare().then(() => renderShare()).catch(shareError));
+  $('#sh-off').addEventListener('click', async () => {
+    const o = sharing; o.busy = true; renderShare('A desligar…');
+    try { await setPublic(o.id, false); o.on = false; o.busy = false; renderShare(o.kind === 'band' ? 'Link desligado. Quem o tinha deixou de ver as gravações.' : 'Link desligado.'); }
+    catch (e) { shareError(e); }
+  });
+  async function copyLink() {
+    const url = shareUrl();
+    try { await navigator.clipboard.writeText(url); toast('Link copiado.'); }
+    catch (e) { const i = $('#sh-link'); i.select(); try { document.execCommand('copy'); toast('Link copiado.'); } catch (x) { toast('Seleciona o link e copia-o.'); } }
+  }
+  $('#sh-copy').addEventListener('click', copyLink);
+  $('#sh-send').addEventListener('click', async () => {
+    const o = sharing;
+    const data = o.kind === 'band'
+      ? { title: `${bandName()} · ensaios`, text: `Gravações dos ensaios de ${bandName()}:`, url: shareUrl() }
+      : { title: o.name, text: `Ouve isto: ${o.name}`, url: shareUrl() };
+    if (navigator.share) { try { await navigator.share(data); return; } catch (e) { if (e && e.name === 'AbortError') return; } }
+    copyLink();
+  });
+  $('#btn-share').addEventListener('click', openBandShare);
+
+  // ---------- Ouve isto: página de uma só gravação, para amigos ----------
+  async function startListen() {
+    document.body.classList.add('listen-mode');
+    $('.top').hidden = true; $('main.wrap').hidden = true; $('#listen').hidden = false;
+    const la = new Audio(); la.preload = 'metadata';
+    const err = (m) => { $('#ls-error').textContent = m; $('#ls-error').hidden = !m; };
+    $('#ls-drive').href = `https://drive.google.com/file/d/${encodeURIComponent(LISTEN_ID)}/view`;
+    let title = 'Gravação partilhada', sub = '', src = null;
+    try {
+      if (DEMO) { title = 'Cais do Sodré – take 3'; sub = `${bandName()} · Estúdio – pré-produção · ${shortDate(todayISO())}`; src = await demoLoop(); }
+      else {
+        const f = await driveGet('/files/' + encodeURIComponent(LISTEN_ID), { fields: 'id,name,properties,appProperties' });
+        const pr = Object.assign({}, f.appProperties, f.properties);
+        title = stripExt(f.name);
+        sub = [pr.band, pr.reh, pr.date && /^\d{4}-\d{2}-\d{2}$/.test(pr.date) ? shortDate(pr.date) : ''].filter(Boolean).join(' · ');
+        if (pr.duration) $('#ls-dur').textContent = fmtDur(Number(pr.duration));
+        src = mediaUrl(f.id);
+      }
+    } catch (e) {
+      if (e.noKey) { $('#ls-drive').classList.add('primary'); $('#ls-drive').textContent = 'Ouvir no Google Drive'; }
+      else err(e.status === 404 || e.status === 403 ? 'Esta gravação já não está partilhada. Pede um link novo a quem to enviou.' : e.message);
+    }
+    $('#ls-title').textContent = title;
+    $('#ls-sub').textContent = sub; $('#ls-sub').hidden = !sub;
+    document.title = title === 'Gravação partilhada' ? 'Soundbite' : `${title} · Soundbite`;
+    if (!src) { $('#ls-play').hidden = true; $('#ls-seekrow').hidden = true; return; }
+    $('#ls-play').disabled = false;
+    let started = false;
+    $('#ls-play').addEventListener('click', () => {
+      if (!started) { started = true; la.src = src; }
+      la.paused ? la.play().catch(() => {}) : la.pause();
+    });
+    const sync = () => { $('#ls-play use').setAttribute('href', la.paused ? '#i-play' : '#i-pause'); $('#ls-play').setAttribute('aria-label', la.paused ? 'Tocar' : 'Pausa'); };
+    la.addEventListener('play', sync); la.addEventListener('pause', sync); la.addEventListener('ended', sync);
+    la.addEventListener('waiting', () => $('#ls-play').classList.add('loading'));
+    la.addEventListener('playing', () => $('#ls-play').classList.remove('loading'));
+    la.addEventListener('error', () => { $('#ls-play').classList.remove('loading'); if (la.src) err('Não deu para tocar aqui. Experimenta abrir no Google Drive.'); });
+    let seeking = false;
+    la.addEventListener('timeupdate', () => {
+      $('#ls-cur').textContent = fmtDur(la.currentTime) || '0:00';
+      if (la.duration) $('#ls-dur').textContent = fmtDur(la.duration);
+      if (!seeking && la.duration) $('#ls-seek').value = Math.round((la.currentTime / la.duration) * 1000);
+    });
+    $('#ls-seek').addEventListener('input', () => { seeking = true; });
+    $('#ls-seek').addEventListener('change', (e) => { if (la.duration) la.currentTime = (e.target.value / 1000) * la.duration; seeking = false; });
+    if ('mediaSession' in navigator) navigator.mediaSession.metadata = new MediaMetadata({ title, artist: sub.split(' · ')[0] || 'Soundbite' });
+  }
 
   // ---------- Carregar (upload) ----------
   const up = { files: [], busy: false };
@@ -941,6 +1142,9 @@
     let reloaded = false;
     navigator.serviceWorker.addEventListener('controllerchange', () => { if (!reloaded) { reloaded = true; location.reload(); } });
   }
-  if (!DEMO) loadGis().catch(() => {}); // prepara o botão "Entrar com Google"
-  load();
+  if (MODE === 'listen') startListen();
+  else {
+    if (!DEMO && !READONLY) loadGis().catch(() => {}); // prepara o botão "Entrar com Google"
+    load();
+  }
 })();
