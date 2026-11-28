@@ -9,5 +9,5 @@ window.SOUNDBITE_CONFIG = {
 
   // Chave da API (do mesmo projeto Google Cloud), só para os links da banda e "ouve isto", que abrem sem login.
   // Restringe-a a https://silvinohenriques.github.io/* e à Google Drive API (ver GUIA.md).
-  googleApiKey: ""
+  googleApiKey: "AIzaSyBzJTJUgIn5yuHTTQ7fMPYyZo_OtkWW3ok"
 };
